@@ -13,7 +13,10 @@ const TOKEN = process.env.TOKEN;
 const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
 
 function clean(content) {
-  return content.split(":").slice(1).join(":").trim();
+  if (content.includes(":")) {
+    return content.split(":").slice(1).join(":").trim();
+  }
+  return content.trim();
 }
 
 client.on("messageCreate", async (message) => {
