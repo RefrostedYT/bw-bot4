@@ -12,76 +12,74 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
 
-// Extract text from normal messages, webhooks, and embeds.
-function getRawText(message) {
-  return (
-    message.content ||
-    message.embeds?.[0]?.description ||
-    message.embeds?.[0]?.title ||
-    ""
-  );
+// Get all text from the message, including content and embeds.
+function getAllText(message) {
+  let parts = [];
+
+  if (message.content) {
+    parts.push(message.content);
+  }
+
+  for (const embed of message.embeds || []) {
+    if (embed.title) parts.push(embed.title);
+    if (embed.description) parts.push(embed.description);
+
+    if (Array.isArray(embed.fields)) {
+      for (const field of embed.fields) {
+        if (field.name) parts.push(field.name);
+        if (field.value) parts.push(field.value);
+      }
+    }
+  }
+
+  return parts.join(" ");
 }
 
-// Remove invisible characters and normalize whitespace.
+// Normalize text by removing invisible characters and collapsing spaces.
 function normalize(text) {
-  if (!text) return "";
-
-  return text
-    // Zero-width characters and BOM
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    // Non-breaking spaces
-    .replace(/\u00A0/g, " ")
-    // Collapse whitespace
-    .replace(/\s+/g, " ")
+  return (text || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width chars
+    .replace(/\u00A0/g, " ")               // non-breaking spaces
+    .replace(/\s+/g, " ")                  // collapse whitespace
     .trim();
 }
 
-// Extract "!bw <player>" from ANY bridge format.
-// Examples handled:
-// [MVP+] Refrqsted [VET]: !bw refrqsted
-// [MVP++] kyranny: fun
-// [GUILD] Player » !bw name
-// Player - !bw name
-function extractCommand(raw) {
-  const text = normalize(raw);
-  if (!text) return null;
+// Find !bw <player> anywhere in any text.
+function extractPlayer(text) {
+  const normalized = normalize(text);
 
-  // Match !bw followed by a username anywhere in the message.
-  // Minecraft usernames are 1-16 characters: letters, numbers, underscores.
-  const match = text.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
+  // Debug log so you can see exactly what the bot is reading.
+  console.log("FULL MESSAGE TEXT:", JSON.stringify(normalized));
 
+  const match = normalized.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
   if (!match) return null;
 
-  return {
-    player: match[1]
-  };
+  return match[1];
 }
 
-// Safe ratio formatting.
-function ratio(numerator, denominator) {
-  if (denominator > 0) return (numerator / denominator).toFixed(2);
-  if (numerator > 0) return "∞";
+// Safe ratio function.
+function ratio(a, b) {
+  if (b > 0) return (a / b).toFixed(2);
+  if (a > 0) return "∞";
   return "0.00";
 }
 
 client.on("messageCreate", async (message) => {
   try {
-    // Ignore bot messages.
+    // Ignore messages from bots.
     if (message.author.bot) return;
 
     // Only respond in #guild-bridge.
     if (message.channel.name !== "guild-bridge") return;
 
-    // Get raw text from the message.
-    const raw = getRawText(message);
+    // Extract all visible text.
+    const allText = getAllText(message);
 
-    // Extract the command and player.
-    const command = extractCommand(raw);
-    if (!command) return;
+    // Find the requested player.
+    const player = extractPlayer(allText);
+    if (!player) return;
 
-    const player = command.player;
-
-    // Query Hypixel API.
+    // Fetch data from Hypixel API.
     const response = await axios.get(
       `https://api.hypixel.net/player?key=${HYPIXEL_KEY}&name=${encodeURIComponent(player)}`
     );
@@ -94,7 +92,6 @@ client.on("messageCreate", async (message) => {
 
     const bw = p.stats?.Bedwars || {};
 
-    // Stats.
     const stars = p.achievements?.bedwars_level || 0;
 
     const wins = bw.wins_bedwars || 0;
@@ -110,13 +107,13 @@ client.on("messageCreate", async (message) => {
     const wlr = ratio(wins, losses);
     const kdr = ratio(kills, deaths);
 
-    // One-line output, no emojis.
+    // One-line response with no emojis.
     await message.channel.send(
       `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`
     );
 
   } catch (error) {
-    console.error("Error fetching stats:", error);
+    console.error("ERROR:", error);
 
     try {
       await message.channel.send("Error fetching stats.");
