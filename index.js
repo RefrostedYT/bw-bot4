@@ -135,10 +135,10 @@ client.on("messageCreate", async (message) => {
     const reply =
       `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`;
 
-    console.log("WAITING 5 SECONDS BEFORE SENDING...");
+    console.log("WAITING 2 SECONDS BEFORE SENDING...");
 
     // Delay to help bridge bots relay properly
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Send response
     await message.channel.send(reply);
