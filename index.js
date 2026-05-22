@@ -12,9 +12,14 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
 
-// Get all text from the message, including content and embeds.
-function getAllText(message) {
-  let parts = [];
+// Combine all visible text from a Discord message.
+// Supports:
+// - Normal messages
+// - Bridge bot messages
+// - Webhook messages
+// - Embedded messages
+function getMessageText(message) {
+  const parts = [];
 
   if (message.content) {
     parts.push(message.content);
@@ -35,21 +40,21 @@ function getAllText(message) {
   return parts.join(" ");
 }
 
-// Normalize text by removing invisible characters and collapsing spaces.
+// Remove invisible characters and normalize whitespace.
 function normalize(text) {
   return (text || "")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width chars
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width characters
     .replace(/\u00A0/g, " ")               // non-breaking spaces
     .replace(/\s+/g, " ")                  // collapse whitespace
     .trim();
 }
 
-// Find !bw <player> anywhere in any text.
+// Extract player name from any text containing "!bw <player>"
 function extractPlayer(text) {
   const normalized = normalize(text);
 
-  // Debug log so you can see exactly what the bot is reading.
-  console.log("FULL MESSAGE TEXT:", JSON.stringify(normalized));
+  console.log("RAW MESSAGE:", JSON.stringify(text));
+  console.log("NORMALIZED:", JSON.stringify(normalized));
 
   const match = normalized.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
   if (!match) return null;
@@ -57,7 +62,7 @@ function extractPlayer(text) {
   return match[1];
 }
 
-// Safe ratio function.
+// Safe ratio formatting
 function ratio(a, b) {
   if (b > 0) return (a / b).toFixed(2);
   if (a > 0) return "∞";
@@ -66,20 +71,21 @@ function ratio(a, b) {
 
 client.on("messageCreate", async (message) => {
   try {
-    // Ignore messages from bots.
-    if (message.author.bot) return;
+    // Ignore only this bot's own messages.
+    // Allow bridge bots and webhook messages.
+    if (message.author.id === client.user.id) return;
 
-    // Only respond in #guild-bridge.
+    // Only respond in #guild-bridge
     if (message.channel.name !== "guild-bridge") return;
 
-    // Extract all visible text.
-    const allText = getAllText(message);
+    // Extract all text from the message
+    const fullText = getMessageText(message);
 
-    // Find the requested player.
-    const player = extractPlayer(allText);
+    // Look for !bw <player>
+    const player = extractPlayer(fullText);
     if (!player) return;
 
-    // Fetch data from Hypixel API.
+    // Query Hypixel API
     const response = await axios.get(
       `https://api.hypixel.net/player?key=${HYPIXEL_KEY}&name=${encodeURIComponent(player)}`
     );
@@ -107,18 +113,17 @@ client.on("messageCreate", async (message) => {
     const wlr = ratio(wins, losses);
     const kdr = ratio(kills, deaths);
 
-    // One-line response with no emojis.
+    // One-line response with no emojis
     await message.channel.send(
       `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`
     );
-
   } catch (error) {
     console.error("ERROR:", error);
 
     try {
       await message.channel.send("Error fetching stats.");
     } catch {
-      // Ignore send failures.
+      // Ignore send failures
     }
   }
 });
