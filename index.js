@@ -1,4 +1,9 @@
-const { Client, GatewayIntentBits } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  WebhookClient
+} = require("discord.js");
+
 const axios = require("axios");
 
 const client = new Client({
@@ -9,16 +14,27 @@ const client = new Client({
   ]
 });
 
+// Environment variables
 const TOKEN = process.env.TOKEN;
 const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
 
+// NEW: Webhook credentials
+const WEBHOOK_ID = process.env.WEBHOOK_ID;
+const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN;
+
+// Create webhook client
+const webhook = new WebhookClient({
+  id: WEBHOOK_ID,
+  token: WEBHOOK_TOKEN
+});
+
 /**
- * Get all visible text from a Discord message.
+ * Extract all visible text from a message.
  * Supports:
  * - normal messages
- * - webhook messages
- * - bridge bot messages
+ * - bridge bots
  * - embeds
+ * - webhooks
  */
 function getMessageText(message) {
   const parts = [];
@@ -43,10 +59,7 @@ function getMessageText(message) {
 }
 
 /**
- * Normalize text:
- * - remove invisible characters
- * - remove weird spaces
- * - collapse whitespace
+ * Normalize weird bridge formatting.
  */
 function normalize(text) {
   return (text || "")
@@ -57,15 +70,13 @@ function normalize(text) {
 }
 
 /**
- * Extract player name from:
+ * Extract player from:
  * !bw player
- * anywhere in bridge-formatted text
  */
 function extractPlayer(text) {
   const normalized = normalize(text);
 
-  console.log("RAW MESSAGE:", JSON.stringify(text));
-  console.log("NORMALIZED:", JSON.stringify(normalized));
+  console.log("RAW MESSAGE:", JSON.stringify(normalized));
 
   const match = normalized.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
 
@@ -75,7 +86,7 @@ function extractPlayer(text) {
 }
 
 /**
- * Safe ratio formatter
+ * Safe ratio formatting.
  */
 function ratio(a, b) {
   if (b > 0) return (a / b).toFixed(2);
@@ -85,17 +96,16 @@ function ratio(a, b) {
 
 client.on("messageCreate", async (message) => {
   try {
-    // Ignore ONLY this bot's own messages
-    // Allow bridge bots and webhooks
+    // Ignore ONLY our own bot account
     if (message.author.id === client.user.id) return;
 
     // Only work in #guild-bridge
     if (message.channel.name !== "guild-bridge") return;
 
-    // Extract all message text
+    // Extract all text
     const fullText = getMessageText(message);
 
-    // Extract player from !bw command
+    // Extract player
     const player = extractPlayer(fullText);
 
     if (!player) return;
@@ -110,7 +120,11 @@ client.on("messageCreate", async (message) => {
     const p = response.data.player;
 
     if (!p) {
-      await message.channel.send("Player not found.");
+      await webhook.send({
+        content: "Player not found.",
+        username: "Guild Stats"
+      });
+
       return;
     }
 
@@ -131,28 +145,31 @@ client.on("messageCreate", async (message) => {
     const wlr = ratio(wins, losses);
     const kdr = ratio(kills, deaths);
 
-    // Final formatted message
     const reply =
       `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`;
 
-    console.log("WAITING 2 SECONDS BEFORE SENDING...");
+    console.log("WAITING 2 SECONDS...");
 
-    // Delay to help bridge bots relay properly
+    // Delay for bridge compatibility
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Send response
-    await message.channel.send(reply);
+    // Send through webhook instead of bot message
+    await webhook.send({
+      content: reply,
+      username: "Guild Stats"
+    });
 
-    console.log("MESSAGE SENT:", reply);
+    console.log("SENT:", reply);
 
   } catch (error) {
     console.error("ERROR:", error);
 
     try {
-      await message.channel.send("Error fetching stats.");
-    } catch {
-      // Ignore send failures
-    }
+      await webhook.send({
+        content: "Error fetching stats.",
+        username: "Guild Stats"
+      });
+    } catch {}
   }
 });
 
