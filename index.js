@@ -1,9 +1,4 @@
-const {
-  Client,
-  GatewayIntentBits,
-  WebhookClient
-} = require("discord.js");
-
+const { Client, GatewayIntentBits } = require("discord.js");
 const axios = require("axios");
 
 const client = new Client({
@@ -14,28 +9,15 @@ const client = new Client({
   ]
 });
 
-// Environment variables
 const TOKEN = process.env.TOKEN;
 const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
 
-// NEW: Webhook credentials
-const WEBHOOK_ID = process.env.WEBHOOK_ID;
-const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN;
-
-// Create webhook client
-const webhook = new WebhookClient({
-  id: WEBHOOK_ID,
-  token: WEBHOOK_TOKEN
-});
-
-/**
- * Extract all visible text from a message.
- * Supports:
- * - normal messages
- * - bridge bots
- * - embeds
- * - webhooks
- */
+// Combine all visible text from a Discord message.
+// Supports:
+// - Normal messages
+// - Bridge bot messages
+// - Webhook messages
+// - Embedded messages
 function getMessageText(message) {
   const parts = [];
 
@@ -58,36 +40,29 @@ function getMessageText(message) {
   return parts.join(" ");
 }
 
-/**
- * Normalize weird bridge formatting.
- */
+// Remove invisible characters and normalize whitespace.
 function normalize(text) {
   return (text || "")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\u00A0/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width characters
+    .replace(/\u00A0/g, " ")               // non-breaking spaces
+    .replace(/\s+/g, " ")                  // collapse whitespace
     .trim();
 }
 
-/**
- * Extract player from:
- * !bw player
- */
+// Extract player name from any text containing "!bw <player>"
 function extractPlayer(text) {
   const normalized = normalize(text);
 
-  console.log("RAW MESSAGE:", JSON.stringify(normalized));
+  console.log("RAW MESSAGE:", JSON.stringify(text));
+  console.log("NORMALIZED:", JSON.stringify(normalized));
 
   const match = normalized.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
-
   if (!match) return null;
 
   return match[1];
 }
 
-/**
- * Safe ratio formatting.
- */
+// Safe ratio formatting
 function ratio(a, b) {
   if (b > 0) return (a / b).toFixed(2);
   if (a > 0) return "∞";
@@ -96,21 +71,19 @@ function ratio(a, b) {
 
 client.on("messageCreate", async (message) => {
   try {
-    // Ignore ONLY our own bot account
+    // Ignore only this bot's own messages.
+    // Allow bridge bots and webhook messages.
     if (message.author.id === client.user.id) return;
 
-    // Only work in #guild-bridge
+    // Only respond in #guild-bridge
     if (message.channel.name !== "guild-bridge") return;
 
-    // Extract all text
+    // Extract all text from the message
     const fullText = getMessageText(message);
 
-    // Extract player
+    // Look for !bw <player>
     const player = extractPlayer(fullText);
-
     if (!player) return;
-
-    console.log(`Fetching stats for ${player}`);
 
     // Query Hypixel API
     const response = await axios.get(
@@ -118,13 +91,8 @@ client.on("messageCreate", async (message) => {
     );
 
     const p = response.data.player;
-
     if (!p) {
-      await webhook.send({
-        content: "Player not found.",
-        username: "Guild Stats"
-      });
-
+      await message.channel.send("Player not found.");
       return;
     }
 
@@ -145,31 +113,18 @@ client.on("messageCreate", async (message) => {
     const wlr = ratio(wins, losses);
     const kdr = ratio(kills, deaths);
 
-    const reply =
-      `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`;
-
-    console.log("WAITING 2 SECONDS...");
-
-    // Delay for bridge compatibility
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Send through webhook instead of bot message
-    await webhook.send({
-      content: reply,
-      username: "Guild Stats"
-    });
-
-    console.log("SENT:", reply);
-
+    // One-line response with no emojis
+    await message.channel.send(
+      `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`
+    );
   } catch (error) {
     console.error("ERROR:", error);
 
     try {
-      await webhook.send({
-        content: "Error fetching stats.",
-        username: "Guild Stats"
-      });
-    } catch {}
+      await message.channel.send("Error fetching stats.");
+    } catch {
+      // Ignore send failures
+    }
   }
 });
 
