@@ -1,52 +1,50 @@
-```js
 module.exports = {
     name: 'bw',
 
     async execute(targetPlayer, bot, client, hypixelClient, args) {
         try {
-            console.log(`Fetching BedWars stats for ${targetPlayer}...`);
+            if (!targetPlayer) {
+                return bot.chat(`/gc Usage: !bw <player>`);
+            }
 
             const player = await hypixelClient.getPlayer(targetPlayer);
 
             if (!player) {
-                return bot.chat(`/gc Player ${targetPlayer} not found.`);
+                return bot.chat(`/gc Player not found: ${targetPlayer}`);
             }
 
-            if (!player.stats || !player.stats.bedwars) {
+            const stats = player.stats?.bedwars;
+
+            if (!stats) {
                 return bot.chat(`/gc ${targetPlayer} has no BedWars stats.`);
             }
 
-            const stats = player.stats.bedwars;
+            const format = (n) => (n || 0).toLocaleString();
 
-            const formatNumber = (num) => (num || 0).toLocaleString();
+            // Safely extract stats (Hypixel correct keys)
+            const level = player?.achievements?.bedwars_level || 0;
 
-            // Level
-            const level = player.level || 0;
-
-            // Final kills / deaths
-            const finalKills = stats.finalKills || 0;
-            const finalDeaths = stats.finalDeaths || 1;
+            const finalKills = stats.final_kills_bedwars || 0;
+            const finalDeaths = stats.final_deaths_bedwars || 1;
             const fkdr = (finalKills / finalDeaths).toFixed(2);
 
-            // Wins / losses
-            const wins = stats.wins || 0;
-            const losses = stats.losses || 1;
+            const wins = stats.wins_bedwars || 0;
+            const losses = stats.losses_bedwars || 1;
             const wlr = (wins / losses).toFixed(2);
 
-            // Beds broken / lost
-            const bedsBroken = stats.bedsBroken || 0;
-            const bedsLost = stats.bedsLost || 1;
+            const bedsBroken = stats.beds_broken_bedwars || 0;
+            const bedsLost = stats.beds_lost_bedwars || 1;
             const bblr = (bedsBroken / bedsLost).toFixed(2);
 
             const winstreak = stats.winstreak || 0;
 
             const response =
                 `[${level}✫] ${player.nickname} ` +
-                `FK: ${formatNumber(finalKills)} ` +
+                `FK: ${format(finalKills)} ` +
                 `FKDR: ${fkdr} ` +
-                `W: ${formatNumber(wins)} ` +
+                `W: ${format(wins)} ` +
                 `WLR: ${wlr} ` +
-                `BB: ${formatNumber(bedsBroken)} ` +
+                `BB: ${format(bedsBroken)} ` +
                 `BBLR: ${bblr} ` +
                 `WS: ${winstreak}`;
 
@@ -54,8 +52,7 @@ module.exports = {
 
         } catch (error) {
             console.error("BW command error:", error);
-            bot.chat(`/gc Error fetching stats for ${targetPlayer}.`);
+            bot.chat(`/gc Error fetching stats for ${targetPlayer}`);
         }
     }
 };
-```
