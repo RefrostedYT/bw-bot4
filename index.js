@@ -1,3 +1,4 @@
+```js
 const { Client, GatewayIntentBits } = require("discord.js");
 const axios = require("axios");
 
@@ -12,22 +13,20 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
 
-// Get all text from the message, including content and embeds.
+// Get all readable text (content + embeds)
 function getAllText(message) {
   let parts = [];
 
-  if (message.content) {
-    parts.push(message.content);
-  }
+  if (message.content) parts.push(message.content);
 
   for (const embed of message.embeds || []) {
-    if (embed.title) parts.push(embed.title);
-    if (embed.description) parts.push(embed.description);
+    if (embed?.title) parts.push(embed.title);
+    if (embed?.description) parts.push(embed.description);
 
-    if (Array.isArray(embed.fields)) {
+    if (Array.isArray(embed?.fields)) {
       for (const field of embed.fields) {
-        if (field.name) parts.push(field.name);
-        if (field.value) parts.push(field.value);
+        if (field?.name) parts.push(field.name);
+        if (field?.value) parts.push(field.value);
       }
     }
   }
@@ -35,30 +34,30 @@ function getAllText(message) {
   return parts.join(" ");
 }
 
-// Normalize text by removing invisible characters and collapsing spaces.
+// Clean text for reliable parsing
 function normalize(text) {
   return (text || "")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width chars
-    .replace(/\u00A0/g, " ")               // non-breaking spaces
-    .replace(/\s+/g, " ")                  // collapse whitespace
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-// Find !bw <player> anywhere in any text.
+// Extract !bw <player>
 function extractPlayer(text) {
   const normalized = normalize(text);
 
-  // Debug log so you can see exactly what the bot is reading.
-  console.log("FULL MESSAGE TEXT:", JSON.stringify(normalized));
+  console.log("BRIDGE INPUT:", JSON.stringify(normalized));
 
   const match = normalized.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
-  if (!match) return null;
-
-  return match[1];
+  return match ? match[1] : null;
 }
 
-// Safe ratio function.
+// Safe ratio helper
 function ratio(a, b) {
+  a = Number(a) || 0;
+  b = Number(b) || 0;
+
   if (b > 0) return (a / b).toFixed(2);
   if (a > 0) return "∞";
   return "0.00";
@@ -66,33 +65,31 @@ function ratio(a, b) {
 
 client.on("messageCreate", async (message) => {
   try {
-    // Ignore messages from bots.
     if (message.author.bot) return;
 
-    // Only respond in #guild-bridge.
+    // MUST match your bridge channel EXACTLY
     if (message.channel.name !== "guild-bridge") return;
 
-    // Extract all visible text.
     const allText = getAllText(message);
-
-    // Find the requested player.
     const player = extractPlayer(allText);
+
     if (!player) return;
 
-    // Fetch data from Hypixel API.
+    console.log("Fetching player:", player);
+
     const response = await axios.get(
       `https://api.hypixel.net/player?key=${HYPIXEL_KEY}&name=${encodeURIComponent(player)}`
     );
 
-    const p = response.data.player;
+    const p = response.data?.player;
+
     if (!p) {
-      await message.channel.send("Player not found.");
-      return;
+      return message.channel.send("Player not found.");
     }
 
     const bw = p.stats?.Bedwars || {};
 
-    const stars = p.achievements?.bedwars_level || 0;
+    const stars = p?.achievements?.bedwars_level || 0;
 
     const wins = bw.wins_bedwars || 0;
     const losses = bw.losses_bedwars || 0;
@@ -107,19 +104,17 @@ client.on("messageCreate", async (message) => {
     const wlr = ratio(wins, losses);
     const kdr = ratio(kills, deaths);
 
-    // One-line response with no emojis.
-    await message.channel.send(
-      `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`
-    );
+    // IMPORTANT: plain text ONLY (bridge-safe)
+    const output =
+      `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`;
+
+    await message.channel.send(output);
 
   } catch (error) {
     console.error("ERROR:", error);
-
     try {
       await message.channel.send("Error fetching stats.");
-    } catch {
-      // Ignore send failures.
-    }
+    } catch {}
   }
 });
 
@@ -128,3 +123,4 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+```
