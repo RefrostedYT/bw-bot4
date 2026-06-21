@@ -1,135 +1,37 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const axios = require("axios");
+module.exports = {
+    name: 'bw',
+    // Must match the 5-argument signature: (targetPlayer, bot, client, hypixelClient, args)
+    async execute(targetPlayer, bot, client, hypixelClient, args) {
+        try {
+            // 1. Helper functions
+            const formatNumber = (num) => (num || 0).toLocaleString();
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
+            // 2. Fetch Player
+            const player = await hypixelClient.getPlayer(targetPlayer);
+            if (!player || !player.stats?.bedwars) {
+                return bot.chat(`/gc ${targetPlayer} has no BedWars stats.`);
+            }
 
-const TOKEN = process.env.TOKEN;
-const HYPIXEL_KEY = process.env.HYPIXEL_KEY;
+            // 3. Extract stats
+            const stats = player.stats.bedwars;
+            const level = stats.level || 0;
+            const finalKills = stats.finalKills || 0;
+            const finalKDRatio = stats.finalKDRatio || 0;
+            const wins = stats.wins || 0;
+            const WLRatio = stats.WLRatio || 0;
+            const winstreak = stats.winstreak || 0;
+            
+            // Accessing nested beds stats safely
+            const broken = stats.beds?.broken || 0;
+            const BLRatio = stats.beds?.BLRatio || 0;
 
-// Combine all visible text from a Discord message.
-// Supports:
-// - Normal messages
-// - Bridge bot messages
-// - Webhook messages
-// - Embedded messages
-function getMessageText(message) {
-  const parts = [];
+            // 4. Formatting
+            const response = `[${level}✫] ${player.nickname} FK: ${formatNumber(finalKills)} FKDR: ${finalKDRatio} W: ${formatNumber(wins)} WLR: ${WLRatio} BB: ${formatNumber(broken)} BLR: ${BLRatio} WS: ${winstreak}`;
 
-  if (message.content) {
-    parts.push(message.content);
-  }
-
-  for (const embed of message.embeds || []) {
-    if (embed.title) parts.push(embed.title);
-    if (embed.description) parts.push(embed.description);
-
-    if (Array.isArray(embed.fields)) {
-      for (const field of embed.fields) {
-        if (field.name) parts.push(field.name);
-        if (field.value) parts.push(field.value);
-      }
+            bot.chat(`/gc ${response}`);
+        } catch (error) {
+            console.error('Error in bw command:', error);
+            bot.chat(`/gc Error: Could not fetch stats for ${targetPlayer}.`);
+        }
     }
-  }
-
-  return parts.join(" ");
-}
-
-// Remove invisible characters and normalize whitespace.
-function normalize(text) {
-  return (text || "")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width characters
-    .replace(/\u00A0/g, " ")               // non-breaking spaces
-    .replace(/\s+/g, " ")                  // collapse whitespace
-    .trim();
-}
-
-// Extract player name from any text containing "!bw <player>"
-function extractPlayer(text) {
-  const normalized = normalize(text);
-
-  console.log("RAW MESSAGE:", JSON.stringify(text));
-  console.log("NORMALIZED:", JSON.stringify(normalized));
-
-  const match = normalized.match(/!bw\s+([A-Za-z0-9_]{1,16})/i);
-  if (!match) return null;
-
-  return match[1];
-}
-
-// Safe ratio formatting
-function ratio(a, b) {
-  if (b > 0) return (a / b).toFixed(2);
-  if (a > 0) return "∞";
-  return "0.00";
-}
-
-client.on("messageCreate", async (message) => {
-  try {
-    // Ignore only this bot's own messages.
-    // Allow bridge bots and webhook messages.
-    if (message.author.id === client.user.id) return;
-
-    // Only respond in #guild-bridge
-    if (message.channel.name !== "guild-bridge") return;
-
-    // Extract all text from the message
-    const fullText = getMessageText(message);
-
-    // Look for !bw <player>
-    const player = extractPlayer(fullText);
-    if (!player) return;
-
-    // Query Hypixel API
-    const response = await axios.get(
-      `https://api.hypixel.net/player?key=${HYPIXEL_KEY}&name=${encodeURIComponent(player)}`
-    );
-
-    const p = response.data.player;
-    if (!p) {
-      await message.channel.send("Player not found.");
-      return;
-    }
-
-    const bw = p.stats?.Bedwars || {};
-
-    const stars = p.achievements?.bedwars_level || 0;
-
-    const wins = bw.wins_bedwars || 0;
-    const losses = bw.losses_bedwars || 0;
-
-    const kills = bw.kills_bedwars || 0;
-    const deaths = bw.deaths_bedwars || 0;
-
-    const finalKills = bw.final_kills_bedwars || 0;
-    const finalDeaths = bw.final_deaths_bedwars || 0;
-
-    const fkdr = ratio(finalKills, finalDeaths);
-    const wlr = ratio(wins, losses);
-    const kdr = ratio(kills, deaths);
-
-    // One-line response with no emojis
-    await message.channel.send(
-      `${player} | Stars: ${stars} | FKDR: ${fkdr} | WLR: ${wlr} | KDR: ${kdr}`
-    );
-  } catch (error) {
-    console.error("ERROR:", error);
-
-    try {
-      await message.channel.send("Error fetching stats.");
-    } catch {
-      // Ignore send failures
-    }
-  }
-});
-
-client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
-
-client.login(TOKEN);
+};
